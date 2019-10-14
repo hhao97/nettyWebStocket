@@ -37,17 +37,18 @@ public class NettyServer {
                     .childOption(ChannelOption.SO_KEEPALIVE, true)
                     .childOption(ChannelOption.TCP_NODELAY, true)
                     .childHandler(new NettyServerInitConfig());
+            ChannelFuture cf = bind(bootstrap);
+            log.info(NettyServer.class + " 启动正在监听： " + cf.channel().localAddress());
+            cf.channel().closeFuture().sync(); // 关闭服务器通道
         } catch (Exception e) {
             e.printStackTrace();
-            log.error("启动配置信息时出错,原因={}", e.getMessage());
+            log.error("启动服务端出错,原因={}", e.getMessage());
         } finally {
             workerGroup.shutdownGracefully();
             bossGroup.shutdownGracefully();
         }
-        ChannelFuture cf = bind(bootstrap);
-        log.info(NettyServer.class + " 启动正在监听： " + cf.channel().localAddress());
-        cf.channel().closeFuture().sync(); // 关闭服务器通道
-    }
+
+}
 
     private static ChannelFuture bind(final ServerBootstrap serverBootstrap) throws InterruptedException {
         return serverBootstrap.bind(PORT).addListener(future -> {

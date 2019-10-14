@@ -8,6 +8,8 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.handler.stream.ChunkedWriteHandler;
 
+import java.util.logging.SocketHandler;
+
 /**
  * Netty 服务端初始化配置
  * @author huanh
@@ -18,12 +20,10 @@ public class NettyServerInitConfig extends ChannelInitializer<NioSocketChannel> 
     @Override
     protected void initChannel(NioSocketChannel ch) throws Exception {
         System.out.println("收到新连接");
-        //webSocket协议本身是基于http协议的，所以这边也要使用http解编码器
-        ch.pipeline().addLast(new HttpServerCodec());
-        //以块的方式来写的处理器
-        ch.pipeline().addLast(new ChunkedWriteHandler());
-        ch.pipeline().addLast(new HttpObjectAggregator(65536));
-        ch.pipeline().addLast(new NettyServerHandler());
-        ch.pipeline().addLast(new WebSocketServerProtocolHandler("/ws", null, true, 65536 * 10));
+        ChannelPipeline pipeline = ch.pipeline();
+        pipeline.addLast("http-codec", new HttpServerCodec());
+        pipeline.addLast("aggregator", new HttpObjectAggregator(65536)); // Http消息组装
+        pipeline.addLast("http-chunked", new ChunkedWriteHandler()); // WebSocket通信支持
+        pipeline.addLast(new NettyServerHandler());//自定义处理类
     }
 }

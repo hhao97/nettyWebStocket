@@ -1,11 +1,23 @@
 package com.hh.netty.websocket.server;
 import com.alibaba.fastjson.JSON;
+import com.hh.netty.websocket.entity.UserInfo;
+import com.hh.netty.websocket.manager.UserInfoManager;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.websocketx.*;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.util.concurrent.GlobalEventExecutor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -14,76 +26,138 @@ import java.util.Map;
  * @since 2019/10/14
  */
 @Slf4j
-public class NettyServerHandler extends SimpleChannelInboundHandler<TextWebSocketFrame> {
-
+public class NettyServerHandler extends ChannelInboundHandlerAdapter {
+    public static ChannelGroup channels = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
+    private WebSocketServerHandshaker handshaker;
+    private final String wsUri = "/ws";
+    //websocket握手升级绑定页面
+    String wsFactoryUri = "";
+    /*
+     * 握手建立
+     */
     @Override
+    public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
+        Channel incoming = ctx.channel();
+        channels.add(incoming);
+    }
+
+    /*
+     * 握手取消
+     */
+    @Override
+    public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
+        Channel incoming = ctx.channel();
+        channels.remove(incoming);
+    }
+
+    /*
+     * channelAction
+     *
+     * channel 通道 action 活跃的
+     *
+     * 当客户端主动链接服务端的链接后，这个通道就是活跃的了。
+     *
+     */
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        log.info("与客户端建立连接，通道开启！");
-
-        //添加到channelGroup通道组
-        NettyChannelHandlerPoll.channelGroup.add(ctx.channel());
+      System.out.println(ctx.channel().localAddress().toString() + " 通道已激活！");
     }
-
-    @Override
+    /*
+     * channelInactive
+     *
+     * channel 通道 Inactive 不活跃的
+     *
+     * 当客户端主动断开服务端的链接后，这个通道就是不活跃的。
+     *
+     */
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        log.info("与客户端断开连接，通道关闭！");
-        //添加到channelGroup 通道组
-        NettyChannelHandlerPoll.channelGroup.remove(ctx.channel());
+      System.out.println(ctx.channel().localAddress().toString() + " 通道不活跃！");
     }
 
+    /*
+     * 功能：读取 h5页面发送过来的信息
+     */
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        //首次连接是FullHttpRequest，处理参数
-        if (null != msg && msg instanceof FullHttpRequest) {
-            FullHttpRequest request = (FullHttpRequest) msg;
-            String uri = request.uri();
-
-            Map paramMap=getUrlParams(uri);
-            log.info("接收到的参数是："+ JSON.toJSONString(paramMap));
-            //如果url包含参数，需要处理
-            if(uri.contains("?")){
-                String newUri=uri.substring(0,uri.indexOf("?"));
-                log.info(newUri);
-                request.setUri(newUri);
-            }
-
-        }else if(msg instanceof TextWebSocketFrame){
-            //正常的TEXT消息类型
-            TextWebSocketFrame frame=(TextWebSocketFrame)msg;
-            log.info("客户端收到服务器数据：" +frame.text());
-            sendAllMessage(frame.text());
+        if (msg instanceof FullHttpRequest) {// 如果是HTTP请求，进行HTTP操作
+            handleHttpRequest(ctx, (FullHttpRequest) msg);
+        } else if (msg instanceof WebSocketFrame) {// 如果是Websocket请求，则进行websocket操作
+            handleWebSocketFrame(ctx, (WebSocketFrame) msg);
         }
-        super.channelRead(ctx, msg);
     }
-
+    /*
+     * 功能：读空闲时移除Channel
+     */
     @Override
-    protected void channelRead0(ChannelHandlerContext channelHandlerContext, TextWebSocketFrame textWebSocketFrame) throws Exception {
-
-    }
-
-    private void sendAllMessage(String message){
-        //收到信息后，群发给所有channel
-        NettyChannelHandlerPoll.channelGroup.writeAndFlush( new TextWebSocketFrame(message));
-    }
-
-    private static Map getUrlParams(String url){
-        Map<String,String> map = new HashMap<>();
-        url = url.replace("?",";");
-        if (!url.contains(";")){
-            return map;
-        }
-        if (url.split(";").length > 0){
-            String[] arr = url.split(";")[1].split("&");
-            for (String s : arr){
-                String key = s.split("=")[0];
-                String value = s.split("=")[1];
-                map.put(key,value);
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        if (evt instanceof IdleStateEvent) {
+            IdleStateEvent evnet = (IdleStateEvent) evt;
+            // 判断Channel是否读空闲, 读空闲时移除Channel
+            if (evnet.state().equals(IdleState.READER_IDLE)) {
+                UserInfoManager.removeChannel(ctx.channel());
             }
-            return  map;
+        }
+        ctx.fireUserEventTriggered(evt);
+    }
 
-        }else{
-            return map;
+    /*
+     * 功能：处理HTTP的代码
+     */
+    private void handleHttpRequest(ChannelHandlerContext ctx, FullHttpRequest req) throws UnsupportedEncodingException {
+        // 如果HTTP解码失败，返回HHTP异常
+        if (req instanceof HttpRequest) {
+            HttpMethod method = req.getMethod();
+            // 如果是websocket请求就握手升级
+            if (wsUri.equalsIgnoreCase(req.getUri())) {
+                System.out.println(" req instanceof HttpRequest");
+                WebSocketServerHandshakerFactory wsFactory = new WebSocketServerHandshakerFactory(
+                        wsFactoryUri, null, false);
+                handshaker = wsFactory.newHandshaker(req);
+                if (handshaker == null) {
+                    WebSocketServerHandshakerFactory.sendUnsupportedVersionResponse(ctx.channel());
+                } else {
+                    handshaker.handshake(ctx.channel(), req);
+                }
+            }
+
         }
     }
 
+    /*
+     * 处理Websocket的代码
+     */
+    private void handleWebSocketFrame(ChannelHandlerContext ctx, WebSocketFrame frame) {
+        // 判断是否是关闭链路的指令
+        //System.out.println("websocket get");
+        if (frame instanceof CloseWebSocketFrame) {
+            handshaker.close(ctx.channel(), (CloseWebSocketFrame) frame.retain());
+            return;
+        }
+        // 判断是否是Ping消息
+        if (frame instanceof PingWebSocketFrame) {
+            ctx.channel().write(new PongWebSocketFrame(frame.content().retain()));
+            return;
+        }
+        // 文本消息，不支持二进制消息
+        if (frame instanceof TextWebSocketFrame) {
+            // 返回应答消息
+            String requestmsg = ((TextWebSocketFrame) frame).text();
+            System.out.println("websocket消息======"+requestmsg);
+            String[] array= requestmsg.split(",");
+            // 将通道加入通道管理器
+            UserInfoManager.addChannel(ctx.channel(),array[0]);
+            UserInfo userInfo = UserInfoManager.getUserInfo(ctx.channel());
+            if (array.length== 3) {
+                // 将信息返回给h5
+                String sendid=array[0];String friendid=array[1];String messageid=array[2];
+                UserInfoManager.broadcastMess(friendid,messageid,sendid);
+            }
+        }
+    }
+    /**
+     * 功能：服务端发生异常的操作
+     */
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        ctx.close();
+    }
 }

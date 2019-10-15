@@ -56,7 +56,7 @@ public class NettyServer {
                 log.info("netty 服务端口绑定成功, 当前端口号={}", PORT);
             else if (Objects.equals(PORT, MAX_PORT)) {
                 log.error("netty 服务端端口绑定失败");
-                //TODO 抛异常
+                //TODO
             } else {
                 PORT++;
                 bind(serverBootstrap);

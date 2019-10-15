@@ -1,44 +1,66 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html>
 <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>Netty-Websocket</title>
+    <meta charset="UTF-8">
+    <title>WebSocket Chat</title>
 </head>
-
 <body>
 <script type="text/javascript">
-    var ipaddress="127.0.0.1";
-    //新建socket对象
-    window.socket = new WebSocket("ws://"+ipaddress+":7890/ws");
-    //监听netty服务器消息并打印到页面上
-    socket.onmessage = function(event) {
-        var datas=event.data.split(",");
-        console.log("服务器消息===="+datas);
-        $("#chat-box").text(datas);
+    var number = Math.ceil(Math.random() * 10);
+    var socket;
+    if (!window.WebSocket) {
+        window.WebSocket = window.MozWebSocket;
     }
-    //将发送人接收人的id和要发生的消息发送出去
-    function send(){
-        console.log("111")
-        console.log($("#chat-input").val())
-        var data=$("#myid").val()+","+$("#friendid").val()+","+$("#chat-input").val()
-        socket.send(data)
+    if (window.WebSocket) {
+        socket = new WebSocket("ws://localhost:7890/ws");
+        socket.onmessage = function (event) {
+            var ta = document.getElementById('responseText');
+            ta.value = ta.value + '\n' + event.data
+        };
+        socket.onopen = function (event) {
+            var ta = document.getElementById('responseText');
+            ta.value = "连接开启!";
+            // 执行登录
+             socket.send(number);
+        };
+        socket.onclose = function (event) {
+            var ta = document.getElementById('responseText');
+            ta.value = ta.value + "连接被关闭";
+        };
+    } else {
+        alert("你的浏览器不支持 WebSocket！");
     }
-    //登录事件
-    function login(){
-        var data=$("#myid").val();socket.send(data);
+
+    function send(message, id) {
+        var messageInfo = {
+                sendId: number,
+                revId: id,
+                message: message,
+                date: null
+        };
+        if (!window.WebSocket) {
+            return;
+        }
+        if (socket.readyState == WebSocket.OPEN) {
+            socket.send(JSON.stringify(messageInfo));
+        } else {
+            alert("连接没有开启.");
+        }
     }
 </script>
-<div id="content" class="row-center">
-    <div id="chat-box" class="row-center">
-    </div>
-    <div id="input-box">
-        <input class="chat-input" id="chat-input" placeholder="message"></input>
-        <input id="myid" placeholder="myid">
-        <button id="login-button" οnclick="login()">登录</button>
-        <input id="friendid" placeholder="friendid">
-        <button class="chat-button" id="send" οnclick="send()">发送</button>
-    </div>
-</div>
-</body>
+<form onsubmit="return false;">
+    <h3>WebSocket 聊天室：</h3>
+    <textarea id="responseText" style="width: 500px; height: 300px;"></textarea>
+    <br>
+    <input type="text" name="message" style="width: 300px" value="message">
+    <input type="text" name="id" style="width: 300px" value="id">
 
+    <input type="button" value="发送消息" onclick="send(this.form.message.value, this.form.id.value)">
+
+    <input type="button" onclick="javascript:document.getElementById('responseText').value=''" value="清空聊天记录">
+</form>
+<br>
+<br>
+<a href="http://www.waylau.com/">更多例子请访问 www.waylau.com</a>
+</body>
 </html>

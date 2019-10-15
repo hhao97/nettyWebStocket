@@ -1,25 +1,21 @@
 package com.hh.netty.websocket.server;
+
 import com.alibaba.fastjson.JSON;
-import com.hh.netty.websocket.entity.UserInfo;
-import com.hh.netty.websocket.manager.UserInfoManager;
+import com.hh.netty.websocket.entity.Message;
+import com.hh.netty.websocket.manager.ContactManager;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.group.ChannelGroup;
-import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.websocketx.*;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
-import io.netty.util.concurrent.GlobalEventExecutor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.UnsupportedEncodingException;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * @author huangh
@@ -27,8 +23,8 @@ import java.util.Map;
  */
 @Slf4j
 public class NettyServerHandler extends ChannelInboundHandlerAdapter {
-    public static ChannelGroup channels = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
-    private WebSocketServerHandshaker handshaker;
+    public static ChannelGroup channels = NettyChannelHandlerPoll.channelGroup;
+    private WebSocketServerHandshaker handShaker;
     private final String wsUri = "/ws";
     //websocket握手升级绑定页面
     String wsFactoryUri = "";
@@ -48,6 +44,7 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
     public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
         Channel incoming = ctx.channel();
         channels.remove(incoming);
+        ContactManager.removeChannel(ctx.channel());
     }
 
     /*
@@ -59,8 +56,9 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
      *
      */
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-      System.out.println(ctx.channel().localAddress().toString() + " 通道已激活！");
+        log.info(ctx.channel().localAddress().toString() + " 通道已激活！");
     }
+
     /*
      * channelInactive
      *
@@ -70,7 +68,7 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
      *
      */
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-      System.out.println(ctx.channel().localAddress().toString() + " 通道不活跃！");
+        log.info(ctx.channel().localAddress().toString() + " 通道不活跃！");
     }
 
     /*
@@ -84,6 +82,7 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
             handleWebSocketFrame(ctx, (WebSocketFrame) msg);
         }
     }
+
     /*
      * 功能：读空闲时移除Channel
      */
@@ -93,7 +92,7 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
             IdleStateEvent evnet = (IdleStateEvent) evt;
             // 判断Channel是否读空闲, 读空闲时移除Channel
             if (evnet.state().equals(IdleState.READER_IDLE)) {
-                UserInfoManager.removeChannel(ctx.channel());
+                ContactManager.removeChannel(ctx.channel());
             }
         }
         ctx.fireUserEventTriggered(evt);
@@ -108,14 +107,14 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
             HttpMethod method = req.getMethod();
             // 如果是websocket请求就握手升级
             if (wsUri.equalsIgnoreCase(req.getUri())) {
-                System.out.println(" req instanceof HttpRequest");
+                log.info(" req instanceof HttpRequest");
                 WebSocketServerHandshakerFactory wsFactory = new WebSocketServerHandshakerFactory(
                         wsFactoryUri, null, false);
-                handshaker = wsFactory.newHandshaker(req);
-                if (handshaker == null) {
+                handShaker = wsFactory.newHandshaker(req);
+                if (handShaker == null) {
                     WebSocketServerHandshakerFactory.sendUnsupportedVersionResponse(ctx.channel());
                 } else {
-                    handshaker.handshake(ctx.channel(), req);
+                    handShaker.handshake(ctx.channel(), req);
                 }
             }
 
@@ -127,9 +126,9 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
      */
     private void handleWebSocketFrame(ChannelHandlerContext ctx, WebSocketFrame frame) {
         // 判断是否是关闭链路的指令
-        //System.out.println("websocket get");
+        //log.info("websocket get");
         if (frame instanceof CloseWebSocketFrame) {
-            handshaker.close(ctx.channel(), (CloseWebSocketFrame) frame.retain());
+            handShaker.close(ctx.channel(), (CloseWebSocketFrame) frame.retain());
             return;
         }
         // 判断是否是Ping消息
@@ -141,18 +140,16 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
         if (frame instanceof TextWebSocketFrame) {
             // 返回应答消息
             String requestmsg = ((TextWebSocketFrame) frame).text();
-            System.out.println("websocket消息======"+requestmsg);
-            String[] array= requestmsg.split(",");
-            // 将通道加入通道管理器
-            UserInfoManager.addChannel(ctx.channel(),array[0]);
-            UserInfo userInfo = UserInfoManager.getUserInfo(ctx.channel());
-            if (array.length== 3) {
-                // 将信息返回给h5
-                String sendid=array[0];String friendid=array[1];String messageid=array[2];
-                UserInfoManager.broadcastMess(friendid,messageid,sendid);
+            // 登录请求
+            if (requestmsg.matches("^[1-9]\\d*$")){
+                ContactManager.addChannel(ctx.channel(), requestmsg);
+            }else{
+                Message message = JSON.parseObject(requestmsg, Message.class);
+                ContactManager.broadcastMess(message.getRevId().toString(), message.getMessage(), message.getSendId().toString());
             }
         }
     }
+
     /**
      * 功能：服务端发生异常的操作
      */

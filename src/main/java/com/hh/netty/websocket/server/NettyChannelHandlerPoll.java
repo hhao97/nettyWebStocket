@@ -12,4 +12,5 @@ import io.netty.util.concurrent.GlobalEventExecutor;
 public class NettyChannelHandlerPoll {
     public NettyChannelHandlerPoll(){}
     public static ChannelGroup channelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
+
 }

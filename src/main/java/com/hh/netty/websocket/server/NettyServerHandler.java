@@ -13,7 +13,6 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.websocketx.*;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
-import lombok.extern.slf4j.Slf4j;
 
 import java.io.UnsupportedEncodingException;
 
@@ -21,13 +20,13 @@ import java.io.UnsupportedEncodingException;
  * @author huangh
  * @since 2019/10/14
  */
-@Slf4j
 public class NettyServerHandler extends ChannelInboundHandlerAdapter {
     public static ChannelGroup channels = NettyChannelHandlerPoll.channelGroup;
     private WebSocketServerHandshaker handShaker;
     private final String wsUri = "/ws";
     //websocket握手升级绑定页面
     String wsFactoryUri = "";
+
     /*
      * 握手建立
      */
@@ -56,7 +55,7 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
      *
      */
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        log.info(ctx.channel().localAddress().toString() + " 通道已激活！");
+        System.out.println(ctx.channel().localAddress().toString() + " 通道已激活！");
     }
 
     /*
@@ -68,7 +67,7 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
      *
      */
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-        log.info(ctx.channel().localAddress().toString() + " 通道不活跃！");
+        System.out.println(ctx.channel().localAddress().toString() + " 通道不活跃！");
     }
 
     /*
@@ -107,7 +106,6 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
             HttpMethod method = req.getMethod();
             // 如果是websocket请求就握手升级
             if (wsUri.equalsIgnoreCase(req.getUri())) {
-                log.info(" req instanceof HttpRequest");
                 WebSocketServerHandshakerFactory wsFactory = new WebSocketServerHandshakerFactory(
                         wsFactoryUri, null, false);
                 handShaker = wsFactory.newHandshaker(req);
@@ -140,12 +138,11 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
         if (frame instanceof TextWebSocketFrame) {
             // 返回应答消息
             String requestmsg = ((TextWebSocketFrame) frame).text();
-            // 登录请求
-            if (requestmsg.matches("^[1-9]\\d*$")){
+            // 登录请求 验证是请求数据是否是数字 是的话就登录
+            if (requestmsg.matches("^[1-9]\\d*$")) {
                 ContactManager.addChannel(ctx.channel(), requestmsg);
-            }else{
-                Message message = JSON.parseObject(requestmsg, Message.class);
-                ContactManager.broadcastMess(message.getRevId().toString(), message.getMessage(), message.getSendId().toString());
+            } else {
+                //登录失败 逻辑
             }
         }
     }

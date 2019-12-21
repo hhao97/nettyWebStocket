@@ -38,11 +38,11 @@ public class NettyServer {
                     .childOption(ChannelOption.TCP_NODELAY, true)
                     .childHandler(new NettyServerInitConfig());
             ChannelFuture cf = bind(bootstrap);
-            log.info(NettyServer.class + " 启动正在监听： " + cf.channel().localAddress());
+            System.out.println(NettyServer.class + " 启动正在监听： " + cf.channel().localAddress());
             cf.channel().closeFuture().sync(); // 关闭服务器通道
         } catch (Exception e) {
             e.printStackTrace();
-            log.error("启动服务端出错,原因={}", e.getMessage());
+            System.out.println("启动服务端出错,原因={}"+e.getMessage());
         } finally {
             workerGroup.shutdownGracefully();
             bossGroup.shutdownGracefully();
@@ -53,9 +53,9 @@ public class NettyServer {
     private static ChannelFuture bind(final ServerBootstrap serverBootstrap) throws InterruptedException {
         return serverBootstrap.bind(PORT).addListener(future -> {
             if (future.isSuccess())
-                log.info("netty 服务端口绑定成功, 当前端口号={}", PORT);
+                System.out.println("netty 服务端口绑定成功, 当前端口号={}"+PORT);
             else if (Objects.equals(PORT, MAX_PORT)) {
-                log.error("netty 服务端端口绑定失败");
+                System.out.println("netty 服务端端口绑定失败");
                 //TODO
             } else {
                 PORT++;
